@@ -24,6 +24,7 @@ class WorkflowConfig:
     start_at: str
     workdir: str
     run_root: str = ".runs"
+    max_steps: int = 50
     vars: dict[str, Any] = field(default_factory=dict)
     codex: CodexConfig = field(default_factory=CodexConfig)
     steps: dict[str, "StepConfig"] = field(default_factory=dict)
@@ -36,9 +37,12 @@ class StepConfig:
     prompt_file: str | None = None
     output_file: str | None = None
     schema: dict[str, Any] | None = None
+    parallel: list[str] = field(default_factory=list)
+    join: str | None = None
     branches: dict[str, str] = field(default_factory=dict)
     on_success: str | None = None
     on_failure: str | None = None
+    max_visits: int | None = None
     model: str | None = None
     workdir: str | None = None
     codex_extra_args: list[str] = field(default_factory=list)
@@ -47,6 +51,7 @@ class StepConfig:
 @dataclass(slots=True)
 class StepResult:
     step_id: str
+    attempt: int
     success: bool
     next_route: str
     output_path: Path
@@ -61,4 +66,3 @@ class RunResult:
     workflow_name: str
     status: str
     step_results: list[StepResult]
-

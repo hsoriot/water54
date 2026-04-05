@@ -27,6 +27,16 @@ def main() -> None:
         payload = {"success": True, "next": "fix", "source": "fake"}
     elif "branch=finish" in prompt:
         payload = {"success": True, "next": "finish", "source": "fake"}
+    elif "loop-attempt=1" in prompt:
+        payload = {"success": True, "next": "retry", "source": "fake"}
+    elif "loop-attempt=2" in prompt:
+        payload = {"success": True, "next": "done", "source": "fake"}
+    elif "parallel-a" in prompt:
+        payload = {"success": True, "next": "__end__", "worker": "a"}
+    elif "parallel-b" in prompt:
+        payload = {"success": True, "next": "__end__", "worker": "b"}
+    elif "merge-a=a,b=b" in prompt:
+        payload = {"success": True, "next": "__end__", "merged": True}
     elif "force-failure" in prompt:
         payload = {"success": False, "next": "__end__", "source": "fake"}
     elif "render-previous=fix" in prompt:
