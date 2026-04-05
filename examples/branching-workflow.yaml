@@ -1,0 +1,41 @@
+name: branch-demo
+workdir: /Users/riot/riot/codex-workflow-automation
+run_root: .runs
+start_at: classify
+
+codex:
+  bin: codex
+  approval: never
+  sandbox: danger-full-access
+  skip_git_repo_check: true
+
+vars:
+  task_text: "请判断这个任务是否需要修复。"
+
+steps:
+  classify:
+    prompt: |
+      你是一个分类步骤。
+      任务内容：{{ vars.task_text }}
+      如果内容包含“修复”就输出 success=true, next="fix"，否则输出 success=true, next="finish"。
+      只按 schema 输出。
+    output_file: classify.json
+    branches:
+      fix: fix_step
+      finish: finish_step
+
+  fix_step:
+    prompt: |
+      你是修复步骤。
+      上一步输出文件在：{{ steps.classify.output_path }}
+      输出 success=true, next="__end__", note="已进入修复分支"。
+      只按 schema 输出。
+    output_file: fix.json
+
+  finish_step:
+    prompt: |
+      你是结束步骤。
+      上一步路由：{{ steps.classify.output.next }}
+      输出 success=true, next="__end__", note="已进入结束分支"。
+      只按 schema 输出。
+    output_file: finish.json
