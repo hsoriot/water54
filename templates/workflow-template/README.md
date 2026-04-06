@@ -74,7 +74,7 @@ workflow-template/
 workdir: /abs/path/to/your/project
 ```
 
-### 2. 改 step 名和跳转
+### 2. 改 agent 名和跳转
 
 如果你只需要一个 agent，可以删掉 `agent-b`，把 `agent-a` 直接路由到 `__end__`。
 

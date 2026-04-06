@@ -1,56 +1,42 @@
 name: my-workflow
+template_type: multi-agent
 workdir: /abs/path/to/your/project
-run_root: .runs
-start_at: agent_a
-max_steps: 12
 
-codex:
-  bin: codex
-  approval: never
-  sandbox: danger-full-access
-  skip_git_repo_check: true
+control:
+  enabled: true
 
-vars:
-  project_name: your-project
-  terminal: inline
-  control_file: control.yaml
-  shared_handoff: shared/handoff.md
-  agent_a_memory: memory/agent-a.md
-  agent_b_memory: memory/agent-b.md
+shared:
+  files:
+    - id: handoff
+      path: shared/handoff.md
+      purpose: request-and-handoff
 
-steps:
-  agent_a:
-    prompt_file: prompts/agent-a.md
-    output_file: agent-a.json
-    schema:
-      $schema: https://json-schema.org/draft/2020-12/schema
-      type: object
-      required: [success, next]
-      properties:
-        success:
-          type: boolean
-        next:
-          type: string
-          enum: [agent_b, finish, __end__]
-      additionalProperties: false
-    branches:
-      agent_b: agent_b
-      finish: __end__
+agents:
+  - id: agent_a
+    role: planning, analysis, or routing
+    uses_memory: true
+    uses_shared:
+      - handoff
+    next_options:
+      - agent_b
+      - finish
+    prompt_path: prompts/agent-a.md
+    memory_path: memory/agent-a.md
+    output_schema_path: schemas/agent-a-output.json
 
-  agent_b:
-    prompt_file: prompts/agent-b.md
-    output_file: agent-b.json
-    schema:
-      $schema: https://json-schema.org/draft/2020-12/schema
-      type: object
-      required: [success, next]
-      properties:
-        success:
-          type: boolean
-        next:
-          type: string
-          enum: [agent_a, finish, __end__]
-      additionalProperties: false
-    branches:
-      agent_a: agent_a
-      finish: __end__
+  - id: agent_b
+    role: execution, implementation, or validation
+    uses_memory: true
+    uses_shared:
+      - handoff
+    next_options:
+      - agent_a
+      - finish
+    prompt_path: prompts/agent-b.md
+    memory_path: memory/agent-b.md
+    output_schema_path: schemas/agent-b-output.json
+
+workflow:
+  start_at: agent_a
+  max_steps: 12
+  run_root: .runs

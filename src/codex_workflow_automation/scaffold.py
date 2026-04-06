@@ -7,6 +7,8 @@ from typing import Any
 
 import yaml
 
+from codex_workflow_automation.models import CodexConfig, StepConfig, WorkflowConfig
+
 
 class ScaffoldError(RuntimeError):
     pass
@@ -46,6 +48,10 @@ class WorkflowBlueprint:
 
 def load_blueprint(path: str) -> WorkflowBlueprint:
     raw = yaml.safe_load(Path(path).read_text(encoding="utf-8"))
+    return parse_blueprint(raw)
+
+
+def parse_blueprint(raw: Any) -> WorkflowBlueprint:
     if not isinstance(raw, dict):
         raise ScaffoldError("blueprint file must be a YAML object")
 
@@ -108,6 +114,49 @@ def load_blueprint(path: str) -> WorkflowBlueprint:
     return blueprint
 
 
+def compile_blueprint_to_workflow(path: str) -> WorkflowConfig:
+    source_path = Path(path).resolve()
+    base_dir = source_path.parent
+    blueprint = load_blueprint(path)
+
+    vars_map: dict[str, Any] = {"terminal": "inline"}
+    if blueprint.control_enabled:
+        vars_map["control_file"] = "control.yaml"
+    for shared in blueprint.shared_files:
+        vars_map[f"shared_{shared.id}"] = shared.path
+    for agent in blueprint.agents:
+        if agent.uses_memory:
+            vars_map[f"{agent.id}_memory"] = _agent_memory_path(agent)
+
+    steps: dict[str, StepConfig] = {}
+    for agent in blueprint.agents:
+        branches = {option: ("__end__" if option == "finish" else option) for option in agent.next_options}
+        steps[agent.id] = StepConfig(
+            id=agent.id,
+            prompt_file=_agent_prompt_path(agent),
+            output_file=f"{agent.id}.json",
+            schema=_build_schema(blueprint, agent),
+            branches=branches,
+        )
+
+    return WorkflowConfig(
+        name=blueprint.name,
+        start_at=blueprint.start_at,
+        source_path=str(source_path),
+        workdir=_resolve_path(blueprint.workdir, base_dir),
+        run_root=blueprint.run_root,
+        max_steps=blueprint.max_steps,
+        vars=vars_map,
+        codex=CodexConfig(
+            bin="codex",
+            approval="never",
+            sandbox="danger-full-access",
+            skip_git_repo_check=True,
+        ),
+        steps=steps,
+    )
+
+
 def scaffold_blueprint(blueprint: WorkflowBlueprint, destination: str) -> Path:
     root = Path(destination).resolve()
     if root.exists() and any(root.iterdir()):
@@ -129,7 +178,7 @@ def scaffold_blueprint(blueprint: WorkflowBlueprint, destination: str) -> Path:
         _ensure_dir(path.parent)
         path.write_text(_build_shared_file(shared), encoding="utf-8")
 
-    workflow_yaml = _build_workflow_yaml(blueprint)
+    workflow_yaml = _build_blueprint_yaml(blueprint)
     (root / "workflow.yaml").write_text(workflow_yaml, encoding="utf-8")
 
     for agent in blueprint.agents:
@@ -212,40 +261,42 @@ Purpose: {purpose}
 """
 
 
-def _build_workflow_yaml(blueprint: WorkflowBlueprint) -> str:
-    vars_map: dict[str, Any] = {"terminal": "inline"}
-    if blueprint.control_enabled:
-        vars_map["control_file"] = "control.yaml"
-    for shared in blueprint.shared_files:
-        vars_map[f"shared_{shared.id}"] = shared.path
-    for agent in blueprint.agents:
-        if agent.uses_memory:
-            vars_map[f"{agent.id}_memory"] = _agent_memory_path(agent)
-
-    steps: dict[str, Any] = {}
-    for agent in blueprint.agents:
-        branches = {option: ("__end__" if option == "finish" else option) for option in agent.next_options}
-        steps[agent.id] = {
-            "prompt_file": _agent_prompt_path(agent),
-            "output_file": f"{agent.id}.json",
-            "schema": _build_schema(blueprint, agent),
-            "branches": branches,
-        }
-
+def _build_blueprint_yaml(blueprint: WorkflowBlueprint) -> str:
     payload = {
         "name": blueprint.name,
+        "template_type": blueprint.template_type,
         "workdir": blueprint.workdir,
-        "run_root": blueprint.run_root,
-        "start_at": blueprint.start_at,
-        "max_steps": blueprint.max_steps,
-        "codex": {
-            "bin": "codex",
-            "approval": "never",
-            "sandbox": "danger-full-access",
-            "skip_git_repo_check": True,
+        "control": {
+            "enabled": blueprint.control_enabled,
         },
-        "vars": vars_map,
-        "steps": steps,
+        "shared": {
+            "files": [
+                {
+                    "id": shared.id,
+                    "path": shared.path,
+                    "purpose": shared.purpose,
+                }
+                for shared in blueprint.shared_files
+            ]
+        },
+        "agents": [
+            {
+                "id": agent.id,
+                "role": agent.role,
+                "uses_memory": agent.uses_memory,
+                "uses_shared": agent.uses_shared,
+                "next_options": agent.next_options,
+                "prompt_path": _agent_prompt_path(agent),
+                "memory_path": _agent_memory_path(agent) if agent.uses_memory else None,
+                "output_schema_path": _agent_schema_path(agent),
+            }
+            for agent in blueprint.agents
+        ],
+        "workflow": {
+            "start_at": blueprint.start_at,
+            "max_steps": blueprint.max_steps,
+            "run_root": blueprint.run_root,
+        },
     }
     return yaml.safe_dump(payload, sort_keys=False, allow_unicode=True)
 
@@ -396,3 +447,10 @@ def _agent_schema_path(agent: AgentBlueprint) -> str:
 
 def rooted_path(name: str) -> str:
     return f"/abs/path/to/{name}"
+
+
+def _resolve_path(value: str, base_dir: Path) -> str:
+    path = Path(value)
+    if path.is_absolute():
+        return str(path)
+    return str((base_dir / path).resolve())

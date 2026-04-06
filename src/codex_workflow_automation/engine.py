@@ -17,6 +17,7 @@ from codex_workflow_automation.models import (
     StepResult,
     WorkflowConfig,
 )
+from codex_workflow_automation.scaffold import ScaffoldError, compile_blueprint_to_workflow
 from codex_workflow_automation.templating import render_template
 
 
@@ -30,6 +31,12 @@ def load_workflow(path: str) -> WorkflowConfig:
     raw = yaml.safe_load(workflow_path.read_text(encoding="utf-8"))
     if not isinstance(raw, dict):
         raise WorkflowError("workflow file must be a YAML object")
+
+    if "agents" in raw and "workflow" in raw and "template_type" in raw:
+        try:
+            return compile_blueprint_to_workflow(path)
+        except ScaffoldError as exc:
+            raise WorkflowError(str(exc)) from exc
 
     required = ["name", "start_at", "workdir", "steps"]
     for key in required:

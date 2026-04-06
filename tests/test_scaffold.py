@@ -1,13 +1,13 @@
 from __future__ import annotations
 
-import json
 import tempfile
 import unittest
 from pathlib import Path
 
 import yaml
 
-from codex_workflow_automation.scaffold import load_blueprint, scaffold_blueprint
+from codex_workflow_automation.engine import run_workflow
+from codex_workflow_automation.scaffold import compile_blueprint_to_workflow, load_blueprint, scaffold_blueprint
 
 
 class ScaffoldTests(unittest.TestCase):
@@ -67,12 +67,35 @@ class ScaffoldTests(unittest.TestCase):
             self.assertTrue((out_dir / "shared" / "handoff.md").exists())
 
             workflow = yaml.safe_load((out_dir / "workflow.yaml").read_text(encoding="utf-8"))
-            self.assertEqual(workflow["start_at"], "planner")
-            self.assertEqual(workflow["vars"]["shared_handoff"], "shared/handoff.md")
-            self.assertEqual(workflow["steps"]["planner"]["branches"]["executor"], "executor")
+            self.assertEqual(workflow["workflow"]["start_at"], "planner")
+            self.assertEqual(workflow["agents"][0]["uses_shared"], ["handoff"])
 
-            schema = json.loads((out_dir / "schemas" / "planner-output.json").read_text(encoding="utf-8"))
-            self.assertEqual(schema["properties"]["next"]["enum"], ["executor", "finish", "__end__"])
+            compiled = compile_blueprint_to_workflow(str(out_dir / "workflow.yaml"))
+            self.assertEqual(compiled.start_at, "planner")
+            self.assertEqual(compiled.vars["shared_handoff"], "shared/handoff.md")
+            self.assertEqual(compiled.steps["planner"].branches["executor"], "executor")
+
+    def test_runner_can_execute_blueprint_yaml_directly(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            root = Path(tmp_dir)
+            generated = root / "generated"
+            scaffold_blueprint(load_blueprint("/Users/riot/riot/codex-workflow-automation/examples/scaffold-blueprint.yaml"), str(generated))
+
+            fake_codex = Path("/Users/riot/riot/codex-workflow-automation/tests/fake_codex.py")
+            workflow_path = generated / "workflow.yaml"
+            workflow = yaml.safe_load(workflow_path.read_text(encoding="utf-8"))
+            workflow["workdir"] = str(generated)
+            workflow["agents"][0]["prompt_path"] = "prompts/planner.md"
+            workflow["agents"][1]["prompt_path"] = "prompts/executor.md"
+            workflow["workflow"]["run_root"] = "runs"
+            workflow_path.write_text(yaml.safe_dump(workflow, sort_keys=False), encoding="utf-8")
+
+            compiled = compile_blueprint_to_workflow(str(workflow_path))
+            compiled.codex.bin = str(fake_codex)
+            result = run_workflow(compiled)
+
+            self.assertEqual(result.status, "succeeded")
+            self.assertGreaterEqual(len(result.step_results), 1)
 
 
 if __name__ == "__main__":
