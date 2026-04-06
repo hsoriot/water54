@@ -25,7 +25,9 @@ class WorkflowError(RuntimeError):
 
 
 def load_workflow(path: str) -> WorkflowConfig:
-    raw = yaml.safe_load(Path(path).read_text(encoding="utf-8"))
+    workflow_path = Path(path).resolve()
+    base_dir = workflow_path.parent
+    raw = yaml.safe_load(workflow_path.read_text(encoding="utf-8"))
     if not isinstance(raw, dict):
         raise WorkflowError("workflow file must be a YAML object")
 
@@ -70,7 +72,8 @@ def load_workflow(path: str) -> WorkflowConfig:
     workflow = WorkflowConfig(
         name=str(raw["name"]),
         start_at=str(raw["start_at"]),
-        workdir=str(raw["workdir"]),
+        source_path=str(workflow_path),
+        workdir=_resolve_path(str(raw["workdir"]), base_dir),
         run_root=str(raw.get("run_root", ".runs")),
         max_steps=int(raw.get("max_steps", 50)),
         vars=raw.get("vars", {}) or {},
@@ -348,7 +351,7 @@ def _load_and_render_prompt(
     if step.prompt and step.prompt_file:
         raise WorkflowError(f"step '{step.id}' cannot set both prompt and prompt_file")
     if step.prompt_file:
-        prompt = Path(step.prompt_file).read_text(encoding="utf-8")
+        prompt = Path(_resolve_path(step.prompt_file, Path(workflow.source_path).parent)).read_text(encoding="utf-8")
     elif step.prompt:
         prompt = step.prompt
     else:
@@ -570,6 +573,13 @@ def _slugify(value: str) -> str:
             characters.append("-")
     slug = "".join(characters).strip("-")
     return slug or "workflow"
+
+
+def _resolve_path(value: str, base_dir: Path) -> str:
+    path = Path(value)
+    if path.is_absolute():
+        return str(path)
+    return str((base_dir / path).resolve())
 
 
 def _reserve_attempt(step: StepConfig, step_attempts: dict[str, int]) -> int:

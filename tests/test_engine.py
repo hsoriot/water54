@@ -159,6 +159,36 @@ steps:
             merge_payload = result.step_results[-1].payload
             self.assertTrue(merge_payload["merged"])
 
+    def test_relative_prompt_file_and_workdir_are_resolved_from_workflow_path(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            root = Path(tmp_dir)
+            prompts_dir = root / "wf" / "prompts"
+            prompts_dir.mkdir(parents=True)
+            (prompts_dir / "step.txt").write_text("done-step", encoding="utf-8")
+            workflow_file = root / "wf" / "workflow.yaml"
+            fake_codex = self._fake_codex_path()
+            workflow_file.write_text(
+                f"""
+name: test-relative
+workdir: ..
+run_root: runs
+start_at: first
+codex:
+  bin: {fake_codex}
+  approval: never
+  sandbox: danger-full-access
+steps:
+  first:
+    prompt_file: prompts/step.txt
+""".strip(),
+                encoding="utf-8",
+            )
+
+            workflow = load_workflow(str(workflow_file))
+            self.assertEqual(workflow.workdir, str(root.resolve()))
+            result = run_workflow(workflow)
+            self.assertEqual(result.status, "succeeded")
+
 
 if __name__ == "__main__":
     unittest.main()

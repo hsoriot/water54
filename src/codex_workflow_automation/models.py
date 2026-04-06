@@ -22,6 +22,7 @@ class CodexConfig:
 class WorkflowConfig:
     name: str
     start_at: str
+    source_path: str
     workdir: str
     run_root: str = ".runs"
     max_steps: int = 50

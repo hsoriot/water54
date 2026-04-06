@@ -5,6 +5,7 @@ import json
 import sys
 
 from codex_workflow_automation.engine import WorkflowError, load_workflow, run_workflow
+from codex_workflow_automation.scaffold import ScaffoldError, load_blueprint, scaffold_blueprint
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -19,6 +20,10 @@ def build_parser() -> argparse.ArgumentParser:
         default=[],
         help="Override workflow vars as key=value pairs",
     )
+
+    init_parser = subparsers.add_parser("init", help="Generate a workflow package from a blueprint")
+    init_parser.add_argument("blueprint_file")
+    init_parser.add_argument("destination")
     return parser
 
 
@@ -26,6 +31,8 @@ def main() -> None:
     args = build_parser().parse_args()
     if args.command == "run":
         _run_command(args.workflow_file, args.var)
+    if args.command == "init":
+        _init_command(args.blueprint_file, args.destination)
 
 
 def _run_command(workflow_file: str, raw_vars: list[str]) -> None:
@@ -65,3 +72,22 @@ def _parse_vars(raw_vars: list[str]) -> dict[str, str]:
         key, value = item.split("=", 1)
         parsed[key] = value
     return parsed
+
+
+def _init_command(blueprint_file: str, destination: str) -> None:
+    try:
+        blueprint = load_blueprint(blueprint_file)
+        output_dir = scaffold_blueprint(blueprint, destination)
+    except ScaffoldError as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        raise SystemExit(1) from exc
+
+    print(
+        json.dumps(
+            {
+                "blueprint": blueprint_file,
+                "output_dir": str(output_dir),
+            },
+            indent=2,
+        )
+    )

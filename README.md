@@ -26,6 +26,27 @@ python3 -m venv .venv
 .venv/bin/codex-workflow run examples/branching-workflow.yaml
 ```
 
+## 初始化模板包
+
+你也可以先写一份 blueprint YAML，再自动生成完整 workflow 包：
+
+```bash
+.venv/bin/codex-workflow init examples/scaffold-blueprint.yaml /tmp/my-generated-workflow
+```
+
+这会生成：
+
+```text
+/tmp/my-generated-workflow/
+  README.md
+  workflow.yaml
+  control.yaml
+  prompts/
+  schemas/
+  memory/
+  shared/
+```
+
 也可以覆盖变量：
 
 ```bash
@@ -43,6 +64,21 @@ python3 -m venv .venv
 ```bash
 .venv/bin/codex-workflow run examples/parallel-workflow.yaml
 ```
+
+通用模板包：
+
+```text
+templates/workflow-template/
+```
+
+你可以直接复制这个目录作为新项目的起点，再修改其中的：
+
+- `workflow.yaml`
+- `prompts/`
+- `schemas/`
+- `memory/`
+- `shared/`
+- `control.yaml`
 
 ## YAML 示例
 

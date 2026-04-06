@@ -1,0 +1,56 @@
+name: my-workflow
+workdir: /abs/path/to/your/project
+run_root: .runs
+start_at: agent_a
+max_steps: 12
+
+codex:
+  bin: codex
+  approval: never
+  sandbox: danger-full-access
+  skip_git_repo_check: true
+
+vars:
+  project_name: your-project
+  terminal: inline
+  control_file: control.yaml
+  shared_handoff: shared/handoff.md
+  agent_a_memory: memory/agent-a.md
+  agent_b_memory: memory/agent-b.md
+
+steps:
+  agent_a:
+    prompt_file: prompts/agent-a.md
+    output_file: agent-a.json
+    schema:
+      $schema: https://json-schema.org/draft/2020-12/schema
+      type: object
+      required: [success, next]
+      properties:
+        success:
+          type: boolean
+        next:
+          type: string
+          enum: [agent_b, finish, __end__]
+      additionalProperties: false
+    branches:
+      agent_b: agent_b
+      finish: __end__
+
+  agent_b:
+    prompt_file: prompts/agent-b.md
+    output_file: agent-b.json
+    schema:
+      $schema: https://json-schema.org/draft/2020-12/schema
+      type: object
+      required: [success, next]
+      properties:
+        success:
+          type: boolean
+        next:
+          type: string
+          enum: [agent_a, finish, __end__]
+      additionalProperties: false
+    branches:
+      agent_a: agent_a
+      finish: __end__
