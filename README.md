@@ -1,17 +1,28 @@
 # Codex Workflow Automation
 
-用 YAML 定义多步 Codex 工作流，按每一步的结构化 JSON 输出决定是否继续、走向哪个分支，也支持有界循环和显式并行块。
+用一份用户主配置 YAML 定义、初始化并运行 Codex agent workflow。
 
-## 能力
+这个项目适合两类场景：
+
+1. 你已经有一套 workflow 文件，想直接运行
+2. 你只知道自己要几个 agent、它们怎么协作，想先生成模板包再补内容
+
+当前模型只有一个用户主入口：`workflow.yaml`。
+
+- `codex-workflow init`：根据主配置生成一整套可编辑模板文件
+- `codex-workflow run`：直接运行这份主配置
+- memory、shared、control、run artifacts 都落在文件系统里，而不是依赖聊天历史
+
+## 当前能力
 
 - `codex exec` 非交互驱动
-- 每一步都通过 JSON Schema 约束最终输出
-- 输出 JSON 至少包含两个字段：`success` 和 `next`
-- `success=false` 默认终止流程，也可在 YAML 里定义 `on_failure`
-- `next` 支持分支路由，脚本解析 JSON 后决定下一步
-- `max_steps` 和 `max_visits` 支持有界循环
-- `parallel` + `join` 支持显式并行块
-- 每次运行都会落到独立 run 目录，保存 prompt、schema、stdout、stderr、step output 和 `run_manifest.json`
+- step 级 JSON 路由，最小协议为 `success` + `next`
+- 显式分支跳转
+- 有界循环
+- 显式并行 fanout/join
+- 每次运行独立 run 目录落盘
+- prompt 模板变量渲染
+- 一份主配置 YAML 同时用于初始化和运行
 
 ## 安装
 
@@ -20,24 +31,72 @@ python3 -m venv .venv
 .venv/bin/pip install -e .
 ```
 
-## 运行
+## 5 分钟上手
 
-```bash
-.venv/bin/codex-workflow run examples/branching-workflow.yaml
+### 1. 准备一份主配置 YAML
+
+最小示例见：
+[scaffold-blueprint.yaml](/Users/riot/riot/codex-workflow-automation/examples/scaffold-blueprint.yaml)
+
+它表达的是：
+
+- 有哪些 agent
+- 每个 agent 是否有 memory
+- 每个 agent 是否使用 shared 文件
+- agent 可能返回哪些 `next`
+- workflow 从哪开始
+
+一个典型配置如下：
+
+```yaml
+name: sample-scaffold
+template_type: multi-agent
+workdir: /abs/path/to/your/project
+
+control:
+  enabled: true
+
+shared:
+  files:
+    - id: handoff
+      path: shared/handoff.md
+      purpose: request-and-handoff
+
+agents:
+  - id: planner
+    role: high-level planning and routing
+    uses_memory: true
+    uses_shared:
+      - handoff
+    next_options:
+      - executor
+      - finish
+
+  - id: executor
+    role: implementation and validation
+    uses_memory: true
+    uses_shared:
+      - handoff
+    next_options:
+      - planner
+      - finish
+
+workflow:
+  start_at: planner
+  max_steps: 12
+  run_root: .runs
 ```
 
-## 初始化模板包
-
-你也可以先写一份 blueprint YAML，再自动生成完整 workflow 包：
+### 2. 生成模板包
 
 ```bash
-.venv/bin/codex-workflow init examples/scaffold-blueprint.yaml /tmp/my-generated-workflow
+.venv/bin/codex-workflow init examples/scaffold-blueprint.yaml /tmp/my-workflow
 ```
 
-这会生成：
+生成后目录大致是：
 
 ```text
-/tmp/my-generated-workflow/
+my-workflow/
   README.md
   workflow.yaml
   control.yaml
@@ -45,147 +104,121 @@ python3 -m venv .venv
   schemas/
   memory/
   shared/
+  examples/
 ```
 
-也可以覆盖变量：
+### 3. 补全你的业务内容
 
-```bash
-.venv/bin/codex-workflow run examples/branching-workflow.yaml --var task_text=请修复这个问题
-```
-
-循环示例：
-
-```bash
-.venv/bin/codex-workflow run examples/loop-workflow.yaml
-```
-
-并行示例：
-
-```bash
-.venv/bin/codex-workflow run examples/parallel-workflow.yaml
-```
-
-通用模板包：
-
-```text
-templates/workflow-template/
-```
-
-你可以直接复制这个目录作为新项目的起点，再修改其中的：
+你通常只需要改这些文件：
 
 - `workflow.yaml`
-- `prompts/`
-- `schemas/`
-- `memory/`
-- `shared/`
+- `prompts/*.md`
+- `schemas/*.json`
+- `memory/*.md`
+- `shared/*.md`
 - `control.yaml`
 
-## YAML 示例
+### 4. 运行
 
-```yaml
-name: branch-demo
-workdir: /abs/path/to/project
-run_root: .runs
-start_at: classify
-
-codex:
-  bin: codex
-  approval: never
-  sandbox: danger-full-access
-
-steps:
-  classify:
-    prompt: |
-      判断是否需要修复。
-      如果需要修复，输出 success=true, next="fix"。
-      否则输出 success=true, next="finish"。
-    output_file: classify.json
-    branches:
-      fix: fix_step
-      finish: finish_step
-
-  fix_step:
-    prompt: |
-      执行修复。
-      输出 success=true, next="__end__"。
-
-  finish_step:
-    prompt: |
-      结束流程。
-      输出 success=true, next="__end__"。
+```bash
+.venv/bin/codex-workflow run /tmp/my-workflow/workflow.yaml
 ```
 
-## Step 语义
+如果你已经有一套 workflow 文件，也可以直接运行：
 
-- `prompt` 或 `prompt_file`: 注入给 Codex 的提示词
-- `output_file`: 该步骤最终 JSON 输出文件名
-- `branches`: 将输出里的 `next` 映射为下一个 step id
-- `on_success`: 不使用 `branches` 时的固定成功跳转
-- `on_failure`: 失败恢复分支；未设置时默认终止
-- `max_visits`: 单个 step 最多允许执行多少次，适合循环控制
-- `schema`: 自定义该步骤输出 Schema；未设置时默认要求 `success:boolean` 和 `next:string`
-- `parallel`: 并行子步骤列表。当前 step 自身不会调用 Codex，而是并行执行这些子步骤
-- `join`: 并行子步骤全部成功后要进入的下一步
+```bash
+.venv/bin/codex-workflow run /abs/path/to/workflow.yaml
+```
 
-## 循环
+## 用户主配置怎么理解
 
-默认允许流程回到之前的 step，但必须受边界控制：
+可以把主配置理解成一张流程关系表：
 
-- `max_steps`: 整个 workflow 最多执行多少步，默认 `50`
-- `max_visits`: 某个 step 最多允许被访问多少次
+- `agents`：有哪些角色
+- `shared.files`：有哪些共享文件
+- `uses_shared`：每个 agent 读哪份 shared
+- `uses_memory`：是否给这个 agent 单独配一份长期记忆
+- `next_options`：这个 agent 最终可能把流程送去哪里
+- `workflow.start_at`：从哪个 agent 开始
+- `workflow.max_steps`：整条 workflow 最多执行多少步
+
+如果用户第一次接触这个项目，最重要的是理解这 6 个字段。
+
+## 目录职责
+
+- `workflow.yaml`
+  用户主配置。定义 agent、shared、memory、路由和起点。
+
+- `control.yaml`
+  人工干预入口。用于暂停、强制下一步、人工备注。
+
+- `prompts/`
+  每个 agent 的工作说明书。告诉 agent 先读什么、做什么、什么时候返回哪个 `next`。
+
+- `schemas/`
+  每个 agent 的 JSON 输出契约。prompt 里要求的 JSON 字段必须和这里一致。
+
+- `memory/`
+  每个 agent 的长期记忆。适合累计结论、变化原因、失败教训，也适合人工直接修改。
+
+- `shared/`
+  多 agent 或 human/agent 共享状态，例如请求、handoff、闭环说明。
+
+- `examples/`
+  帮助你理解一次完整 workflow 包应该长什么样。
+
+## JSON 路由协议
+
+默认最小协议：
+
+```json
+{
+  "success": true,
+  "next": "executor"
+}
+```
+
+原则只有三条：
+
+1. JSON 只负责流程跳转
+2. memory/shared/run 文件负责沉淀状态
+3. prompt 和 schema 必须严格对齐
+
+## 人工干预
+
+人工介入优先改文件，不要先改运行器代码。
+
+常见入口：
+
+- `memory/*.md`
+- `shared/*.md`
+- `control.yaml`
+
+下次运行时，agent 会重新读取这些文件，所以这也是推荐的暂停后恢复方式。
+
+## 循环和并行
+
+### 循环
+
+- workflow 级 `max_steps`
+- step 级 `max_visits`
+- 重复访问的 step 会写入 `step__02/`、`step__03/` 这样的目录
 
 示例：
+[loop-workflow.yaml](/Users/riot/riot/codex-workflow-automation/examples/loop-workflow.yaml)
 
-```yaml
-max_steps: 6
+### 并行
 
-steps:
-  review:
-    prompt: |
-      第 {{ current_step.attempt }} 次执行。
-      未满足条件时输出 next="retry"。
-      满足条件时输出 next="done"。
-    max_visits: 3
-    branches:
-      retry: review
-      done: finish
-```
+- 显式 `parallel`
+- 显式 `join`
+- 并行子步骤全部成功后进入 join step
 
-同一个 step 被再次执行时，会写到新的目录，例如 `review__02/`。
+示例：
+[parallel-workflow.yaml](/Users/riot/riot/codex-workflow-automation/examples/parallel-workflow.yaml)
 
-## 并行
+## 调试和审计
 
-并行块是显式定义的：
-
-```yaml
-steps:
-  fanout:
-    parallel:
-      - analyst_a
-      - analyst_b
-    join: merge
-
-  analyst_a:
-    prompt: "..."
-
-  analyst_b:
-    prompt: "..."
-
-  merge:
-    prompt: |
-      读取 {{ steps.analyst_a.output.xxx }} 和 {{ steps.analyst_b.output.xxx }}
-```
-
-说明：
-
-- `fanout` 自身是调度节点，不直接调用 Codex
-- `analyst_a` 和 `analyst_b` 会并行运行
-- 只有全部成功时才进入 `join`
-- 子步骤自己的 `next` 目前只用于自身输出记录，不参与并行块路由
-
-## Run 目录
-
-每次运行都会创建：
+每次运行都会创建独立 run 目录：
 
 ```text
 .runs/<timestamp>-<workflow-name>/
@@ -198,16 +231,61 @@ steps:
     stderr.log
 ```
 
-如果循环重复访问同一个 step，目录会变成：
+排查顺序建议：
 
-```text
-review/
-review__02/
-review__03/
+1. 看 `run_manifest.json`
+2. 看出问题 step 的 `stderr.log`
+3. 看该 step 的 `prompt.txt`
+4. 看该 step 的 `schema.json`
+5. 确认 prompt 和 schema 是否一致
+
+## 内置示例
+
+- 基础分支：
+  [branching-workflow.yaml](/Users/riot/riot/codex-workflow-automation/examples/branching-workflow.yaml)
+
+- 循环：
+  [loop-workflow.yaml](/Users/riot/riot/codex-workflow-automation/examples/loop-workflow.yaml)
+
+- 并行：
+  [parallel-workflow.yaml](/Users/riot/riot/codex-workflow-automation/examples/parallel-workflow.yaml)
+
+- 主配置示例：
+  [scaffold-blueprint.yaml](/Users/riot/riot/codex-workflow-automation/examples/scaffold-blueprint.yaml)
+
+- 通用模板包：
+  [workflow-template](/Users/riot/riot/codex-workflow-automation/templates/workflow-template)
+
+## 命令
+
+初始化模板包：
+
+```bash
+.venv/bin/codex-workflow init examples/scaffold-blueprint.yaml /tmp/my-workflow
+```
+
+运行：
+
+```bash
+.venv/bin/codex-workflow run /tmp/my-workflow/workflow.yaml
+```
+
+覆盖变量：
+
+```bash
+.venv/bin/codex-workflow run /tmp/my-workflow/workflow.yaml --var task_text=请修复这个问题
 ```
 
 ## 测试
 
 ```bash
-PYTHONPATH=src python3 -m unittest discover -s tests -p 'test_*.py'
+PYTHONPATH=src .venv/bin/python -m unittest discover -s tests -p 'test_*.py'
 ```
+
+当前这套实现已验证：
+
+- 主配置 YAML 可直接运行
+- 主配置 YAML 可生成模板包
+- 循环
+- 并行
+- 模板包生成后可继续被运行器读取
