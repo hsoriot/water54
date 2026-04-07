@@ -4,12 +4,12 @@ import argparse
 import json
 import sys
 
-from codex_workflow_automation.engine import WorkflowError, load_workflow, run_workflow
-from codex_workflow_automation.scaffold import ScaffoldError, load_blueprint, scaffold_blueprint
+from agent_workflow.engine import WorkflowError, load_workflow, run_workflow
+from agent_workflow.scaffold import ScaffoldError, load_blueprint, scaffold_blueprint
 
 
 def build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(description="Run a YAML-defined Codex workflow.")
+    parser = argparse.ArgumentParser(description="Run a YAML-defined agent workflow.")
     subparsers = parser.add_subparsers(dest="command", required=True)
 
     run_parser = subparsers.add_parser("run", help="Run a workflow file")

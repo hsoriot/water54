@@ -13,7 +13,6 @@
 workflow-template/
   README.md
   workflow.yaml
-  control.yaml
   prompts/
     agent-a.md
     agent-b.md
@@ -25,8 +24,6 @@ workflow-template/
     agent-b.md
   shared/
     handoff.md
-  examples/
-    sample-run-notes.md
 ```
 
 可以把这个目录整体复制到你的项目里，再按下面的步骤修改。
@@ -48,9 +45,6 @@ workflow-template/
 
 - `workflow.yaml`
   定义 step、跳转、循环、并行和 `workdir`
-
-- `control.yaml`
-  人工干预入口，例如暂停、强制下一步、人工备注
 
 - `prompts/*.md`
   每个 agent 的行为说明书
@@ -108,7 +102,6 @@ workdir: /abs/path/to/your/project
 先安装运行器：
 
 ```bash
-cd /Users/riot/riot/codex-workflow-automation
 python3 -m venv .venv
 .venv/bin/pip install -e .
 ```
@@ -116,7 +109,7 @@ python3 -m venv .venv
 再执行：
 
 ```bash
-/Users/riot/riot/codex-workflow-automation/.venv/bin/codex-workflow run /abs/path/to/workflow-template/workflow.yaml
+agent-workflow run /abs/path/to/workflow-template/workflow.yaml
 ```
 
 ## 如何人工介入
@@ -129,8 +122,8 @@ python3 -m venv .venv
 - 改 `shared/handoff.md`
   用于插入请求、备注、闭环状态
 
-- 改 `control.yaml`
-  用于暂停、强制下一步、写人工备注
+- 改 `.cursor.yaml`
+  编辑 `current_step` 字段控制下一步走向
 
 然后重新运行 workflow。
 

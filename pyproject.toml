@@ -1,7 +1,7 @@
 [project]
-name = "codex-workflow-automation"
+name = "agent-workflow"
 version = "0.1.0"
-description = "YAML-driven Codex workflow orchestrator with branching and JSON step outputs"
+description = "YAML-driven agent workflow orchestrator with branching and JSON step outputs"
 requires-python = ">=3.11"
 dependencies = [
   "PyYAML>=6.0",
@@ -18,4 +18,4 @@ package-dir = {"" = "src"}
 where = ["src"]
 
 [project.scripts]
-codex-workflow = "codex_workflow_automation.cli:main"
+agent-workflow = "agent_workflow.cli:main"
